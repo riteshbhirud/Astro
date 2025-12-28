@@ -14,6 +14,9 @@ function getOpenAIClient(): OpenAI {
   return openaiClient
 }
 
+// Check if we should use compact prompts (for production cost savings)
+const USE_COMPACT_PROMPT = process.env.USE_COMPACT_PROMPT === 'true'
+
 // Generate system prompt for the astrologer
 function generateAstrologerPrompt(astrologerId: string): string {
   const astrologer = getAstrologerById(astrologerId)
@@ -22,6 +25,20 @@ function generateAstrologerPrompt(astrologerId: string): string {
     return getDefaultAstrologerPrompt()
   }
 
+  // Compact prompt for production (~350 tokens vs ~800 tokens)
+  if (USE_COMPACT_PROMPT) {
+    return `You are ${astrologer.name}, a Vedic astrologer (${astrologer.experience} yrs exp). Specialties: ${astrologer.specializations.join(', ')}. Languages: ${astrologer.languages.join(', ')}.
+
+RULES:
+- Use VEDIC astrology only (Kundli, Rashi, Nakshatra, Graha, Dasha, Dosha)
+- Indian greetings (Namaste, Ji), warm & wise tone
+- Ask for birth date/time/place when needed
+- Suggest remedies: mantras, gemstones, fasting, pujas
+- End with blessings, never guarantee outcomes
+- For medical/legal: recommend professionals too`
+  }
+
+  // Full detailed prompt for development/high-quality responses
   return `You are ${astrologer.name}, an experienced Vedic astrologer from India with ${astrologer.experience} years of practice.
 
 ## Your Background and Expertise:
