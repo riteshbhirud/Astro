@@ -152,39 +152,49 @@ async function fetchAstrologyData(birthData: {
   }
 }
 
-// Function to get coordinates from place name using geo_details API
+// Calculate timezone from longitude (approximate)
+function calculateTimezoneFromLongitude(lon: number, country?: string): number {
+  // For India, always use IST (+5:30)
+  if (country?.toLowerCase().includes('india')) {
+    return 5.5
+  }
+  // For other countries, calculate approximate timezone from longitude
+  // Each 15 degrees of longitude = 1 hour
+  return Math.round(lon / 15)
+}
+
+// Function to get coordinates from place name using Nominatim (free, no rate limits)
 async function getPlaceCoordinates(placeName: string): Promise<{ lat: number; lon: number; tzone: number } | null> {
   try {
-    const geoData = await AstrologyAPI.getGeoDetails(placeName, 1)
+    const params = new URLSearchParams({
+      q: placeName,
+      format: 'json',
+      addressdetails: '1',
+      limit: '1',
+    })
 
-    if (!geoData) return null
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'AstroChat/1.0',
+      },
+    })
 
-    // Handle different response formats
-    let place: any = null
-
-    if (Array.isArray(geoData) && geoData.length > 0) {
-      place = geoData[0]
-    } else if (geoData.geonames && Array.isArray(geoData.geonames) && geoData.geonames.length > 0) {
-      place = geoData.geonames[0]
-    } else if (geoData.places && Array.isArray(geoData.places) && geoData.places.length > 0) {
-      place = geoData.places[0]
-    } else if (typeof geoData === 'object' && (geoData.lat !== undefined || geoData.latitude !== undefined)) {
-      place = geoData
+    if (!response.ok) {
+      console.error('Nominatim API error:', response.status)
+      return null
     }
 
-    if (!place) return null
+    const data = await response.json()
 
-    // Extract coordinates from various field names
-    const lat = place.lat ?? place.latitude
-    const lon = place.lon ?? place.lng ?? place.longitude
-    const tzone = place.timezone ?? place.tzone ?? 5.5
+    if (Array.isArray(data) && data.length > 0) {
+      const place = data[0]
+      const lat = parseFloat(place.lat)
+      const lon = parseFloat(place.lon)
+      const country = place.address?.country || ''
+      const tzone = calculateTimezoneFromLongitude(lon, country)
 
-    if (lat !== undefined && lon !== undefined) {
-      return {
-        lat: typeof lat === 'number' ? lat : parseFloat(lat),
-        lon: typeof lon === 'number' ? lon : parseFloat(lon),
-        tzone: typeof tzone === 'number' ? tzone : parseFloat(tzone) || 5.5,
-      }
+      return { lat, lon, tzone }
     }
 
     return null

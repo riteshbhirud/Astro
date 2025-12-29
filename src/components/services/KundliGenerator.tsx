@@ -2,6 +2,14 @@
 
 import { useState } from 'react'
 import { Calendar, Clock, MapPin, Loader2, User, Star, Moon, Sun } from 'lucide-react'
+import {
+  PlaceResult,
+  getDisplayName,
+  getPlaceLatitude,
+  getPlaceLongitude,
+  getPlaceTimezone,
+  searchPlaces
+} from '@/lib/placeUtils'
 
 interface KundliResult {
   birthDetails: any
@@ -10,24 +18,6 @@ interface KundliResult {
   manglik: any
   currentDasha: any
   sadheSati: any
-}
-
-interface PlaceResult {
-  place_name?: string
-  name?: string
-  full_name?: string
-  placeName?: string
-  lat?: number
-  latitude?: number
-  lon?: number
-  lng?: number
-  longitude?: number
-  timezone?: number
-  tzone?: number
-  country?: string
-  countryName?: string
-  state?: string
-  adminName1?: string
 }
 
 export default function KundliGenerator() {
@@ -46,85 +36,30 @@ export default function KundliGenerator() {
   const [error, setError] = useState('')
   const [places, setPlaces] = useState<PlaceResult[]>([])
   const [showPlaces, setShowPlaces] = useState(false)
+  const [searching, setSearching] = useState(false)
 
-  // Helper to extract place name from various API response formats
-  const getPlaceName = (place: PlaceResult): string => {
-    return place.place_name || place.name || place.placeName || place.full_name || 'Unknown'
-  }
-
-  const getPlaceState = (place: PlaceResult): string => {
-    return place.state || place.adminName1 || ''
-  }
-
-  const getPlaceCountry = (place: PlaceResult): string => {
-    return place.country || place.countryName || ''
-  }
-
-  const getPlaceLatitude = (place: PlaceResult): number => {
-    return place.lat || place.latitude || 0
-  }
-
-  const getPlaceLongitude = (place: PlaceResult): number => {
-    return place.lon || place.lng || place.longitude || 0
-  }
-
-  const getPlaceTimezone = (place: PlaceResult): number => {
-    return place.timezone || place.tzone || 5.5
-  }
-
-  const getDisplayName = (place: PlaceResult): string => {
-    const name = getPlaceName(place)
-    const state = getPlaceState(place)
-    const country = getPlaceCountry(place)
-
-    const parts = [name]
-    if (state && state !== name) parts.push(state)
-    if (country) parts.push(country)
-
-    return parts.filter(Boolean).join(', ')
-  }
-
-  const searchPlace = async (query: string) => {
+  const handleSearchPlace = async (query: string) => {
     if (query.length < 3) {
       setPlaces([])
       setShowPlaces(false)
       return
     }
 
+    setSearching(true)
     try {
-      const res = await fetch('/api/astrology', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'geo_details', data: { place: query, maxRows: 5 } }),
-      })
-      const data = await res.json()
-
-      if (data.success && data.data) {
-        // Handle different response formats
-        let placesArray: PlaceResult[] = []
-
-        if (Array.isArray(data.data)) {
-          placesArray = data.data
-        } else if (data.data.geonames && Array.isArray(data.data.geonames)) {
-          placesArray = data.data.geonames
-        } else if (data.data.places && Array.isArray(data.data.places)) {
-          placesArray = data.data.places
-        } else if (typeof data.data === 'object') {
-          // Single result
-          placesArray = [data.data]
-        }
-
-        if (placesArray.length > 0) {
-          setPlaces(placesArray)
-          setShowPlaces(true)
-        } else {
-          setPlaces([])
-          setShowPlaces(false)
-        }
+      const results = await searchPlaces(query, 5)
+      if (results.length > 0) {
+        setPlaces(results)
+        setShowPlaces(true)
+      } else {
+        setPlaces([])
+        setShowPlaces(false)
       }
     } catch (err) {
       console.error('Error searching places:', err)
       setPlaces([])
+    } finally {
+      setSearching(false)
     }
   }
 
@@ -275,14 +210,17 @@ export default function KundliGenerator() {
                   value={formData.place}
                   onChange={(e) => {
                     setFormData({ ...formData, place: e.target.value })
-                    searchPlace(e.target.value)
+                    handleSearchPlace(e.target.value)
                   }}
                   placeholder="Start typing your city..."
                   className="input-cosmic w-full pl-11"
                 />
+                {searching && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 animate-spin" />
+                )}
               </div>
               {showPlaces && places.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-cosmic-100 border border-white/20 rounded-xl overflow-hidden">
+                <div className="absolute z-10 w-full mt-1 bg-cosmic-100 border border-white/20 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
                   {places.map((place, idx) => (
                     <button
                       key={idx}
