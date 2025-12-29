@@ -5,28 +5,107 @@ const API_BASE_URL = 'https://json.astrologyapi.com/v1'
 const API_USER_ID = process.env.ASTROLOGY_API_USER_ID || '648808'
 const API_KEY = process.env.ASTROLOGY_API_KEY || '5b21e2f11a6618f81a7aa0f6cc4e9e3dc06121a1'
 
+// Simple in-memory cache (persists for the duration of the server process)
+const cache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes cache
+
+// Rate limiting - queue requests to avoid 429 errors
+let lastRequestTime = 0
+const MIN_REQUEST_INTERVAL = 500 // 500ms between requests
+
 // Create authorization header
 function getAuthHeader(): string {
   const credentials = Buffer.from(`${API_USER_ID}:${API_KEY}`).toString('base64')
   return `Basic ${credentials}`
 }
 
-// Generic API call function
-async function callAstrologyAPI(endpoint: string, data: any): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': getAuthHeader(),
-    },
-    body: JSON.stringify(data),
-  })
+// Generate cache key from endpoint and data
+function getCacheKey(endpoint: string, data: any): string {
+  return `${endpoint}:${JSON.stringify(data)}`
+}
 
-  if (!response.ok) {
-    throw new Error(`Astrology API error: ${response.status}`)
+// Check if cache is valid
+function getFromCache(key: string): any | null {
+  const cached = cache.get(key)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data
+  }
+  cache.delete(key) // Clean up expired cache
+  return null
+}
+
+// Save to cache
+function saveToCache(key: string, data: any): void {
+  cache.set(key, { data, timestamp: Date.now() })
+}
+
+// Wait for rate limit
+async function waitForRateLimit(): Promise<void> {
+  const now = Date.now()
+  const timeSinceLastRequest = now - lastRequestTime
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+    await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest))
+  }
+  lastRequestTime = Date.now()
+}
+
+// Sleep helper
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Generic API call function with retry logic and caching
+async function callAstrologyAPI(endpoint: string, data: any, retries = 3): Promise<any> {
+  // Check cache first
+  const cacheKey = getCacheKey(endpoint, data)
+  const cached = getFromCache(cacheKey)
+  if (cached) {
+    return cached
   }
 
-  return response.json()
+  // Wait for rate limit
+  await waitForRateLimit()
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': getAuthHeader(),
+        },
+        body: JSON.stringify(data),
+      })
+
+      if (response.status === 429) {
+        // Rate limited - wait and retry
+        const waitTime = Math.pow(2, attempt) * 1000 // Exponential backoff: 2s, 4s, 8s
+        console.warn(`Rate limited (429). Attempt ${attempt}/${retries}. Waiting ${waitTime}ms...`)
+        if (attempt < retries) {
+          await sleep(waitTime)
+          continue
+        }
+        throw new Error('API rate limit exceeded. Please wait a few minutes and try again.')
+      }
+
+      if (!response.ok) {
+        throw new Error(`Astrology API error: ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      // Cache successful response
+      saveToCache(cacheKey, result)
+
+      return result
+    } catch (error: any) {
+      if (attempt === retries) {
+        throw error
+      }
+      // Wait before retry for other errors
+      await sleep(1000 * attempt)
+    }
+  }
 }
 
 // Types for birth data
@@ -281,22 +360,15 @@ export async function getTimezone(latitude: number, longitude: number, date: str
 }
 
 // ==================== COMPREHENSIVE KUNDLI ====================
+// Sequential calls with rate limiting to avoid 429 errors
 export async function getFullKundli(data: BirthData) {
-  const [
-    birthDetails,
-    astroDetails,
-    planets,
-    manglik,
-    currentDasha,
-    sadheSati,
-  ] = await Promise.all([
-    getBirthDetails(data),
-    getAstroDetails(data),
-    getPlanets(data),
-    getManglikDetails(data),
-    getCurrentVDashaAll(data),
-    getSadheSatiStatus(data),
-  ])
+  // Make calls sequentially to respect rate limits
+  const birthDetails = await getBirthDetails(data)
+  const astroDetails = await getAstroDetails(data)
+  const planets = await getPlanets(data)
+  const manglik = await getManglikDetails(data)
+  const currentDasha = await getCurrentVDashaAll(data)
+  const sadheSati = await getSadheSatiStatus(data)
 
   return {
     birthDetails,

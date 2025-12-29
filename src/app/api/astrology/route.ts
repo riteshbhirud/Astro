@@ -147,9 +147,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result })
   } catch (error: any) {
     console.error('Astrology API error:', error)
+
+    // Provide user-friendly error messages
+    let errorMessage = error.message || 'Failed to fetch astrology data'
+    let statusCode = 500
+
+    if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+      errorMessage = 'The astrology service is temporarily busy. Please wait 30 seconds and try again.'
+      statusCode = 429
+    }
+
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch astrology data' },
-      { status: 500 }
+      {
+        success: false,
+        error: errorMessage,
+        retryable: statusCode === 429
+      },
+      { status: statusCode }
     )
   }
 }
