@@ -12,6 +12,24 @@ interface KundliResult {
   sadheSati: any
 }
 
+interface PlaceResult {
+  place_name?: string
+  name?: string
+  full_name?: string
+  placeName?: string
+  lat?: number
+  latitude?: number
+  lon?: number
+  lng?: number
+  longitude?: number
+  timezone?: number
+  tzone?: number
+  country?: string
+  countryName?: string
+  state?: string
+  adminName1?: string
+}
+
 export default function KundliGenerator() {
   const [formData, setFormData] = useState({
     name: '',
@@ -26,12 +44,50 @@ export default function KundliGenerator() {
   const [result, setResult] = useState<KundliResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [places, setPlaces] = useState<any[]>([])
+  const [places, setPlaces] = useState<PlaceResult[]>([])
   const [showPlaces, setShowPlaces] = useState(false)
+
+  // Helper to extract place name from various API response formats
+  const getPlaceName = (place: PlaceResult): string => {
+    return place.place_name || place.name || place.placeName || place.full_name || 'Unknown'
+  }
+
+  const getPlaceState = (place: PlaceResult): string => {
+    return place.state || place.adminName1 || ''
+  }
+
+  const getPlaceCountry = (place: PlaceResult): string => {
+    return place.country || place.countryName || ''
+  }
+
+  const getPlaceLatitude = (place: PlaceResult): number => {
+    return place.lat || place.latitude || 0
+  }
+
+  const getPlaceLongitude = (place: PlaceResult): number => {
+    return place.lon || place.lng || place.longitude || 0
+  }
+
+  const getPlaceTimezone = (place: PlaceResult): number => {
+    return place.timezone || place.tzone || 5.5
+  }
+
+  const getDisplayName = (place: PlaceResult): string => {
+    const name = getPlaceName(place)
+    const state = getPlaceState(place)
+    const country = getPlaceCountry(place)
+
+    const parts = [name]
+    if (state && state !== name) parts.push(state)
+    if (country) parts.push(country)
+
+    return parts.filter(Boolean).join(', ')
+  }
 
   const searchPlace = async (query: string) => {
     if (query.length < 3) {
       setPlaces([])
+      setShowPlaces(false)
       return
     }
 
@@ -42,21 +98,43 @@ export default function KundliGenerator() {
         body: JSON.stringify({ action: 'geo_details', data: { place: query, maxRows: 5 } }),
       })
       const data = await res.json()
-      if (data.success && data.data?.geonames) {
-        setPlaces(data.data.geonames)
-        setShowPlaces(true)
+
+      if (data.success && data.data) {
+        // Handle different response formats
+        let placesArray: PlaceResult[] = []
+
+        if (Array.isArray(data.data)) {
+          placesArray = data.data
+        } else if (data.data.geonames && Array.isArray(data.data.geonames)) {
+          placesArray = data.data.geonames
+        } else if (data.data.places && Array.isArray(data.data.places)) {
+          placesArray = data.data.places
+        } else if (typeof data.data === 'object') {
+          // Single result
+          placesArray = [data.data]
+        }
+
+        if (placesArray.length > 0) {
+          setPlaces(placesArray)
+          setShowPlaces(true)
+        } else {
+          setPlaces([])
+          setShowPlaces(false)
+        }
       }
     } catch (err) {
       console.error('Error searching places:', err)
+      setPlaces([])
     }
   }
 
-  const selectPlace = (place: any) => {
-    setFormData({ ...formData, place: `${place.name}, ${place.countryName}` })
+  const selectPlace = (place: PlaceResult) => {
+    const displayName = getDisplayName(place)
+    setFormData({ ...formData, place: displayName })
     setLocation({
-      lat: parseFloat(place.latitude),
-      lon: parseFloat(place.longitude),
-      tzone: 5.5, // Default to IST, can be calculated
+      lat: getPlaceLatitude(place),
+      lon: getPlaceLongitude(place),
+      tzone: getPlaceTimezone(place),
     })
     setShowPlaces(false)
     setPlaces([])
@@ -211,7 +289,7 @@ export default function KundliGenerator() {
                       onClick={() => selectPlace(place)}
                       className="w-full px-4 py-3 text-left text-white hover:bg-white/10 transition-colors border-b border-white/10 last:border-0"
                     >
-                      {place.name}, {place.adminName1}, {place.countryName}
+                      {getDisplayName(place)}
                     </button>
                   ))}
                 </div>

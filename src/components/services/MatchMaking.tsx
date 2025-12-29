@@ -1,7 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Calendar, Clock, MapPin, Loader2, Heart, Users, Check, X, AlertCircle } from 'lucide-react'
+import { Calendar, Clock, MapPin, Loader2, Heart, Users, Check, AlertCircle } from 'lucide-react'
+import {
+  PlaceResult,
+  LocationData,
+  getDisplayName,
+  getLocationData,
+  searchPlaces
+} from '@/lib/placeUtils'
 
 interface MatchResult {
   score: number
@@ -10,58 +17,60 @@ interface MatchResult {
   message?: string
 }
 
+interface PersonData {
+  day: string
+  month: string
+  year: string
+  hour: string
+  min: string
+  place: string
+}
+
 export default function MatchMaking() {
-  const [boyData, setBoyData] = useState({
+  const [boyData, setBoyData] = useState<PersonData>({
     day: '', month: '', year: '', hour: '', min: '', place: '',
   })
-  const [girlData, setGirlData] = useState({
+  const [girlData, setGirlData] = useState<PersonData>({
     day: '', month: '', year: '', hour: '', min: '', place: '',
   })
-  const [boyLocation, setBoyLocation] = useState<{ lat: number; lon: number; tzone: number } | null>(null)
-  const [girlLocation, setGirlLocation] = useState<{ lat: number; lon: number; tzone: number } | null>(null)
+  const [boyLocation, setBoyLocation] = useState<LocationData | null>(null)
+  const [girlLocation, setGirlLocation] = useState<LocationData | null>(null)
   const [result, setResult] = useState<MatchResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [places, setPlaces] = useState<any[]>([])
+  const [boyPlaces, setBoyPlaces] = useState<PlaceResult[]>([])
+  const [girlPlaces, setGirlPlaces] = useState<PlaceResult[]>([])
   const [activeField, setActiveField] = useState<'boy' | 'girl' | null>(null)
 
-  const searchPlace = async (query: string, type: 'boy' | 'girl') => {
+  const handleSearchPlace = async (query: string, type: 'boy' | 'girl') => {
     if (query.length < 3) {
-      setPlaces([])
+      if (type === 'boy') setBoyPlaces([])
+      else setGirlPlaces([])
+      setActiveField(null)
       return
     }
 
-    try {
-      const res = await fetch('/api/astrology', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'geo_details', data: { place: query, maxRows: 5 } }),
-      })
-      const data = await res.json()
-      if (data.success && data.data?.geonames) {
-        setPlaces(data.data.geonames)
-        setActiveField(type)
-      }
-    } catch (err) {
-      console.error('Error searching places:', err)
+    const places = await searchPlaces(query, 5)
+    if (places.length > 0) {
+      if (type === 'boy') setBoyPlaces(places)
+      else setGirlPlaces(places)
+      setActiveField(type)
     }
   }
 
-  const selectPlace = (place: any, type: 'boy' | 'girl') => {
-    const location = {
-      lat: parseFloat(place.latitude),
-      lon: parseFloat(place.longitude),
-      tzone: 5.5,
-    }
+  const selectPlace = (place: PlaceResult, type: 'boy' | 'girl') => {
+    const displayName = getDisplayName(place)
+    const location = getLocationData(place)
 
     if (type === 'boy') {
-      setBoyData({ ...boyData, place: `${place.name}, ${place.countryName}` })
+      setBoyData({ ...boyData, place: displayName })
       setBoyLocation(location)
+      setBoyPlaces([])
     } else {
-      setGirlData({ ...girlData, place: `${place.name}, ${place.countryName}` })
+      setGirlData({ ...girlData, place: displayName })
       setGirlLocation(location)
+      setGirlPlaces([])
     }
-    setPlaces([])
     setActiveField(null)
   }
 
@@ -131,12 +140,14 @@ export default function MatchMaking() {
     data,
     setData,
     location,
+    places,
     type,
     label
   }: {
-    data: typeof boyData
-    setData: (d: typeof boyData) => void
-    location: typeof boyLocation
+    data: PersonData
+    setData: (d: PersonData) => void
+    location: LocationData | null
+    places: PlaceResult[]
     type: 'boy' | 'girl'
     label: string
   }) => (
@@ -219,7 +230,7 @@ export default function MatchMaking() {
               value={data.place}
               onChange={(e) => {
                 setData({ ...data, place: e.target.value })
-                searchPlace(e.target.value, type)
+                handleSearchPlace(e.target.value, type)
               }}
               placeholder="Start typing city..."
               className="input-cosmic w-full pl-10 text-sm"
@@ -233,7 +244,7 @@ export default function MatchMaking() {
                   onClick={() => selectPlace(place, type)}
                   className="w-full px-4 py-2 text-left text-white text-sm hover:bg-white/10 transition-colors border-b border-white/10 last:border-0"
                 >
-                  {place.name}, {place.adminName1}, {place.countryName}
+                  {getDisplayName(place)}
                 </button>
               ))}
             </div>
@@ -243,7 +254,7 @@ export default function MatchMaking() {
         {location && (
           <div className="flex items-center gap-2 text-green-400 text-sm">
             <Check className="w-4 h-4" />
-            Location set
+            Location set ({location.lat.toFixed(2)}, {location.lon.toFixed(2)})
           </div>
         )}
       </div>
@@ -261,6 +272,7 @@ export default function MatchMaking() {
               data={boyData}
               setData={setBoyData}
               location={boyLocation}
+              places={boyPlaces}
               type="boy"
               label="Groom's Details"
             />
@@ -268,6 +280,7 @@ export default function MatchMaking() {
               data={girlData}
               setData={setGirlData}
               location={girlLocation}
+              places={girlPlaces}
               type="girl"
               label="Bride's Details"
             />

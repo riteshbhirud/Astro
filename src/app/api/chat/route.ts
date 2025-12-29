@@ -152,8 +152,50 @@ async function fetchAstrologyData(birthData: {
   }
 }
 
+// Function to get coordinates from place name using geo_details API
+async function getPlaceCoordinates(placeName: string): Promise<{ lat: number; lon: number; tzone: number } | null> {
+  try {
+    const geoData = await AstrologyAPI.getGeoDetails(placeName, 1)
+
+    if (!geoData) return null
+
+    // Handle different response formats
+    let place: any = null
+
+    if (Array.isArray(geoData) && geoData.length > 0) {
+      place = geoData[0]
+    } else if (geoData.geonames && Array.isArray(geoData.geonames) && geoData.geonames.length > 0) {
+      place = geoData.geonames[0]
+    } else if (geoData.places && Array.isArray(geoData.places) && geoData.places.length > 0) {
+      place = geoData.places[0]
+    } else if (typeof geoData === 'object' && (geoData.lat !== undefined || geoData.latitude !== undefined)) {
+      place = geoData
+    }
+
+    if (!place) return null
+
+    // Extract coordinates from various field names
+    const lat = place.lat ?? place.latitude
+    const lon = place.lon ?? place.lng ?? place.longitude
+    const tzone = place.timezone ?? place.tzone ?? 5.5
+
+    if (lat !== undefined && lon !== undefined) {
+      return {
+        lat: typeof lat === 'number' ? lat : parseFloat(lat),
+        lon: typeof lon === 'number' ? lon : parseFloat(lon),
+        tzone: typeof tzone === 'number' ? tzone : parseFloat(tzone) || 5.5,
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('Error getting place coordinates:', error)
+    return null
+  }
+}
+
 // Parse birth details from user message
-function parseBirthDetails(message: string, conversationHistory: any[]): any | null {
+async function parseBirthDetails(message: string, conversationHistory: any[]): Promise<any | null> {
   // Look for birth details in the conversation
   const allText = [...conversationHistory.map(m => m.content), message].join(' ')
 
@@ -172,15 +214,50 @@ function parseBirthDetails(message: string, conversationHistory: any[]): any | n
     if (period === 'pm' && hour < 12) hour += 12
     if (period === 'am' && hour === 12) hour = 0
 
+    // Try to extract place name from conversation
+    // Common patterns: "born in <place>", "from <place>", "place: <place>", "<place> city"
+    const placePatterns = [
+      /born\s+(?:in|at)\s+([A-Za-z\s]+?)(?:\s+on|\s+at|\s*,|\s*\.|\s*$)/i,
+      /place\s*(?:of\s+birth)?[:\s]+([A-Za-z\s]+?)(?:\s+on|\s+at|\s*,|\s*\.|\s*$)/i,
+      /from\s+([A-Za-z\s]+?)(?:\s+on|\s+at|\s*,|\s*\.|\s*$)/i,
+      /(?:city|town)\s*[:\s]+([A-Za-z\s]+?)(?:\s+on|\s+at|\s*,|\s*\.|\s*$)/i,
+      /birth\s+place\s*[:\s]+([A-Za-z\s]+?)(?:\s+on|\s+at|\s*,|\s*\.|\s*$)/i,
+      /([A-Za-z]+(?:\s+[A-Za-z]+)?)\s*,?\s*india/i,
+    ]
+
+    let placeName: string | null = null
+    for (const pattern of placePatterns) {
+      const match = allText.match(pattern)
+      if (match && match[1]) {
+        placeName = match[1].trim()
+        break
+      }
+    }
+
+    // Get coordinates for the place
+    let lat = 28.6139 // Default to Delhi
+    let lon = 77.2090
+    let tzone = 5.5
+
+    if (placeName) {
+      const coords = await getPlaceCoordinates(placeName)
+      if (coords) {
+        lat = coords.lat
+        lon = coords.lon
+        tzone = coords.tzone
+      }
+    }
+
     return {
       day: parseInt(dateMatch[1]),
       month: parseInt(dateMatch[2]),
       year: parseInt(dateMatch[3]),
       hour,
       min,
-      lat: 28.6139, // Default to Delhi
-      lon: 77.2090,
-      tzone: 5.5,
+      lat,
+      lon,
+      tzone,
+      placeName,
     }
   }
 
@@ -212,7 +289,12 @@ export async function POST(request: NextRequest) {
 
     // Try to get astrology data if birth details are provided
     let astrologyContext = ''
-    let parsedBirthData = birthData || parseBirthDetails(message, conversationHistory)
+    let parsedBirthData = birthData
+
+    // If no birth data provided, try to parse from conversation
+    if (!parsedBirthData || !parsedBirthData.day) {
+      parsedBirthData = await parseBirthDetails(message, conversationHistory)
+    }
 
     if (parsedBirthData && parsedBirthData.day && parsedBirthData.month && parsedBirthData.year) {
       const astroData = await fetchAstrologyData(parsedBirthData)
@@ -220,6 +302,7 @@ export async function POST(request: NextRequest) {
         astrologyContext = `
 
 ## USER'S ACTUAL BIRTH CHART DATA (Use this for accurate readings):
+- Birth Place: ${parsedBirthData.placeName || 'Unknown'} (Lat: ${parsedBirthData.lat?.toFixed(2)}, Lon: ${parsedBirthData.lon?.toFixed(2)})
 - Ascendant: ${astroData.astroDetails?.ascendant || 'N/A'}
 - Moon Sign (Rashi): ${astroData.astroDetails?.moon_sign || astroData.astroDetails?.Varna || 'N/A'}
 - Nakshatra: ${astroData.astroDetails?.naksahtra || astroData.astroDetails?.Nakshatra || 'N/A'}

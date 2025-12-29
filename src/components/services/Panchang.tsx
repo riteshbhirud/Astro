@@ -1,7 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Calendar, MapPin, Loader2, Sun, Moon, Clock, Star, CheckCircle, XCircle } from 'lucide-react'
+import { Calendar, MapPin, Loader2, Sun, Moon, Clock, CheckCircle, XCircle } from 'lucide-react'
+import {
+  PlaceResult,
+  LocationData,
+  getDisplayName,
+  getLocationData,
+  searchPlaces
+} from '@/lib/placeUtils'
 
 interface PanchangData {
   day: string
@@ -31,42 +38,33 @@ export default function Panchang() {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   })
   const [place, setPlace] = useState('')
-  const [location, setLocation] = useState<{ lat: number; lon: number; tzone: number } | null>(null)
+  const [location, setLocation] = useState<LocationData | null>(null)
   const [panchang, setPanchang] = useState<PanchangData | null>(null)
   const [chaughadiya, setChaughadiya] = useState<ChaughadiyaData | null>(null)
   const [loading, setLoading] = useState(false)
-  const [places, setPlaces] = useState<any[]>([])
+  const [places, setPlaces] = useState<PlaceResult[]>([])
   const [showPlaces, setShowPlaces] = useState(false)
 
-  const searchPlace = async (query: string) => {
+  const handleSearchPlace = async (query: string) => {
     if (query.length < 3) {
       setPlaces([])
+      setShowPlaces(false)
       return
     }
 
-    try {
-      const res = await fetch('/api/astrology', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'geo_details', data: { place: query, maxRows: 5 } }),
-      })
-      const data = await res.json()
-      if (data.success && data.data?.geonames) {
-        setPlaces(data.data.geonames)
-        setShowPlaces(true)
-      }
-    } catch (err) {
-      console.error('Error searching places:', err)
+    const results = await searchPlaces(query, 5)
+    if (results.length > 0) {
+      setPlaces(results)
+      setShowPlaces(true)
+    } else {
+      setPlaces([])
+      setShowPlaces(false)
     }
   }
 
-  const selectPlace = (p: any) => {
-    setPlace(`${p.name}, ${p.countryName}`)
-    setLocation({
-      lat: parseFloat(p.latitude),
-      lon: parseFloat(p.longitude),
-      tzone: 5.5,
-    })
+  const selectPlace = (p: PlaceResult) => {
+    setPlace(getDisplayName(p))
+    setLocation(getLocationData(p))
     setShowPlaces(false)
     setPlaces([])
   }
@@ -152,7 +150,7 @@ export default function Panchang() {
                 value={place}
                 onChange={(e) => {
                   setPlace(e.target.value)
-                  searchPlace(e.target.value)
+                  handleSearchPlace(e.target.value)
                 }}
                 placeholder="Enter city name..."
                 className="input-cosmic w-full pl-11"
@@ -166,7 +164,7 @@ export default function Panchang() {
                     onClick={() => selectPlace(p)}
                     className="w-full px-4 py-3 text-left text-white hover:bg-white/10 transition-colors border-b border-white/10 last:border-0"
                   >
-                    {p.name}, {p.adminName1}, {p.countryName}
+                    {getDisplayName(p)}
                   </button>
                 ))}
               </div>
@@ -267,7 +265,7 @@ export default function Panchang() {
                     </h4>
                     <div className="space-y-2">
                       {chaughadiya.day?.map((muhurat: any, idx: number) => (
-                        <div key={idx} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${getMuhuratColor(muhurat.muhpiturta)}`}>
+                        <div key={idx} className={`flex justify-between items-center px-3 py-2 rounded-lg border ${getMuhuratColor(muhurat.muhurta)}`}>
                           <div className="flex items-center gap-2">
                             {['Amrit', 'Shubh', 'Labh'].includes(muhurat.muhurta) ? (
                               <CheckCircle className="w-4 h-4" />

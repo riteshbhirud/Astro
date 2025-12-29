@@ -2,6 +2,13 @@
 
 import { useState } from 'react'
 import { Calendar, Clock, MapPin, Loader2, BookOpen, AlertTriangle, Sparkles } from 'lucide-react'
+import {
+  PlaceResult,
+  LocationData,
+  getDisplayName,
+  getLocationData,
+  searchPlaces
+} from '@/lib/placeUtils'
 
 interface LalKitabResult {
   horoscope: any
@@ -18,42 +25,33 @@ export default function LalKitab() {
     min: '',
     place: '',
   })
-  const [location, setLocation] = useState<{ lat: number; lon: number; tzone: number } | null>(null)
+  const [location, setLocation] = useState<LocationData | null>(null)
   const [result, setResult] = useState<LalKitabResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [places, setPlaces] = useState<any[]>([])
+  const [places, setPlaces] = useState<PlaceResult[]>([])
   const [showPlaces, setShowPlaces] = useState(false)
 
-  const searchPlace = async (query: string) => {
+  const handleSearchPlace = async (query: string) => {
     if (query.length < 3) {
       setPlaces([])
+      setShowPlaces(false)
       return
     }
 
-    try {
-      const res = await fetch('/api/astrology', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'geo_details', data: { place: query, maxRows: 5 } }),
-      })
-      const data = await res.json()
-      if (data.success && data.data?.geonames) {
-        setPlaces(data.data.geonames)
-        setShowPlaces(true)
-      }
-    } catch (err) {
-      console.error('Error searching places:', err)
+    const results = await searchPlaces(query, 5)
+    if (results.length > 0) {
+      setPlaces(results)
+      setShowPlaces(true)
+    } else {
+      setPlaces([])
+      setShowPlaces(false)
     }
   }
 
-  const selectPlace = (place: any) => {
-    setFormData({ ...formData, place: `${place.name}, ${place.countryName}` })
-    setLocation({
-      lat: parseFloat(place.latitude),
-      lon: parseFloat(place.longitude),
-      tzone: 5.5,
-    })
+  const selectPlace = (place: PlaceResult) => {
+    setFormData({ ...formData, place: getDisplayName(place) })
+    setLocation(getLocationData(place))
     setShowPlaces(false)
     setPlaces([])
   }
@@ -209,7 +207,7 @@ export default function LalKitab() {
                   value={formData.place}
                   onChange={(e) => {
                     setFormData({ ...formData, place: e.target.value })
-                    searchPlace(e.target.value)
+                    handleSearchPlace(e.target.value)
                   }}
                   placeholder="Start typing your city..."
                   className="input-cosmic w-full pl-11"
@@ -223,7 +221,7 @@ export default function LalKitab() {
                       onClick={() => selectPlace(place)}
                       className="w-full px-4 py-3 text-left text-white hover:bg-white/10 transition-colors border-b border-white/10 last:border-0"
                     >
-                      {place.name}, {place.adminName1}, {place.countryName}
+                      {getDisplayName(place)}
                     </button>
                   ))}
                 </div>
