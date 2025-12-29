@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import { Star, MessageCircle, Shield, Clock, Users, Sparkles, ChevronRight } from 'lucide-react'
+import { Star, MessageCircle, Shield, Clock, Users, Sparkles, ChevronRight, Scroll, Heart, Calendar, Hash, BookOpen } from 'lucide-react'
 import { astrologers } from '@/data/astrologers'
 import AstrologerCard from '@/components/AstrologerCard'
 
@@ -143,15 +143,65 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Services Section */}
+      {/* Free Tools Section */}
+      <section className="py-20 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center space-x-2 bg-green-500/10 backdrop-blur-sm border border-green-500/20 rounded-full px-4 py-2 mb-4">
+              <Sparkles className="w-4 h-4 text-green-400" />
+              <span className="text-sm text-green-400">100% Free Tools</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+              Free Vedic <span className="gradient-text">Astrology Tools</span>
+            </h2>
+            <p className="text-white/60 max-w-2xl mx-auto">
+              Get accurate Kundli, match compatibility, Panchang, and more - all powered by authentic Vedic calculations
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {[
+              { icon: Scroll, title: 'Free Kundli', description: 'Generate birth chart', href: '/services?tab=kundli', color: 'from-primary-500/20 to-primary-600/10 border-primary-500/30' },
+              { icon: Heart, title: 'Match Making', description: 'Check compatibility', href: '/services?tab=matching', color: 'from-pink-500/20 to-pink-600/10 border-pink-500/30' },
+              { icon: Calendar, title: 'Panchang', description: "Today's muhurat", href: '/services?tab=panchang', color: 'from-blue-500/20 to-blue-600/10 border-blue-500/30' },
+              { icon: Hash, title: 'Numerology', description: 'Name analysis', href: '/services?tab=numerology', color: 'from-green-500/20 to-green-600/10 border-green-500/30' },
+              { icon: BookOpen, title: 'Lal Kitab', description: 'Remedies & Totke', href: '/services?tab=lalkitab', color: 'from-red-500/20 to-red-600/10 border-red-500/30' },
+            ].map((service, index) => (
+              <Link
+                href={service.href}
+                key={index}
+                className={`card-hover bg-gradient-to-br ${service.color} backdrop-blur-sm border rounded-xl p-5 text-center group`}
+              >
+                <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                  <service.icon className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-white font-semibold mb-1">{service.title}</div>
+                <div className="text-white/60 text-sm">{service.description}</div>
+              </Link>
+            ))}
+          </div>
+
+          <div className="text-center mt-8">
+            <Link
+              href="/services"
+              className="inline-flex items-center space-x-2 text-primary-400 hover:text-primary-300 transition-colors"
+            >
+              <span>Explore All Free Tools</span>
+              <ChevronRight className="w-5 h-5" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Consultation Services Section */}
       <section className="py-20 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-              Our <span className="gradient-text">Services</span>
+              Expert <span className="gradient-text">Consultations</span>
             </h2>
             <p className="text-white/60 max-w-2xl mx-auto">
-              Comprehensive astrological services tailored for your needs
+              Talk to our expert astrologers for personalized guidance on life matters
             </p>
           </div>
 

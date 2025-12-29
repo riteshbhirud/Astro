@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { useAuth } from '@/lib/AuthContext'
-import { Menu, X, Star, User, LogOut, MessageCircle } from 'lucide-react'
+import { Menu, X, Star, User, LogOut, MessageCircle, Sparkles } from 'lucide-react'
 
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -28,6 +28,13 @@ export default function Navbar() {
               className="text-white/80 hover:text-white transition-colors"
             >
               Home
+            </Link>
+            <Link
+              href="/services"
+              className="text-white/80 hover:text-white transition-colors flex items-center space-x-1"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Services</span>
             </Link>
             <Link
               href="/astrologers"
@@ -88,6 +95,13 @@ export default function Navbar() {
                 onClick={() => setIsMenuOpen(false)}
               >
                 Home
+              </Link>
+              <Link
+                href="/services"
+                className="text-white/80 hover:text-white transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Free Services
               </Link>
               <Link
                 href="/astrologers"

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { getAstrologerById } from '@/data/astrologers'
+import * as AstrologyAPI from '@/lib/astrologyApi'
 
 // OpenAI client will be initialized lazily when needed
 let openaiClient: OpenAI | null = null
@@ -18,7 +19,7 @@ function getOpenAIClient(): OpenAI {
 const USE_COMPACT_PROMPT = process.env.USE_COMPACT_PROMPT === 'true'
 
 // Generate system prompt for the astrologer
-function generateAstrologerPrompt(astrologerId: string): string {
+function generateAstrologerPrompt(astrologerId: string, birthData?: any): string {
   const astrologer = getAstrologerById(astrologerId)
 
   if (!astrologer) {
@@ -31,112 +32,159 @@ function generateAstrologerPrompt(astrologerId: string): string {
 
 RULES:
 - Use VEDIC astrology only (Kundli, Rashi, Nakshatra, Graha, Dasha, Dosha)
-- Indian greetings (Namaste, Ji), warm & wise tone
-- Ask for birth date/time/place when needed
-- Suggest remedies: mantras, gemstones, fasting, pujas
-- End with blessings, never guarantee outcomes
+- Give DEFINITIVE answers. Never use "if", "maybe", "could be", "it depends"
+- Be warm & wise. Use Indian greetings (Namaste, Ji)
+- Keep responses SHORT (2-4 sentences max). Be conversational.
+- Ask for birth date/time/place when needed for readings
+- Suggest specific remedies: mantras, gemstones, fasting, pujas
+- End with blessings. Never guarantee outcomes.
 - For medical/legal: recommend professionals too`
   }
 
   // Full detailed prompt for development/high-quality responses
   return `You are ${astrologer.name}, an experienced Vedic astrologer from India with ${astrologer.experience} years of practice.
 
-## Your Background and Expertise:
-- You specialize in: ${astrologer.specializations.join(', ')}
-- Your areas of expertise include: ${astrologer.expertise.join(', ')}
-- You speak: ${astrologer.languages.join(', ')} (default to English unless user speaks in another language)
-- You have conducted over ${astrologer.totalConsultations.toLocaleString()} consultations
+## Your Background:
+- Specializations: ${astrologer.specializations.join(', ')}
+- Expertise: ${astrologer.expertise.join(', ')}
+- Languages: ${astrologer.languages.join(', ')} (default to English unless user speaks another language)
+- ${astrologer.totalConsultations.toLocaleString()}+ consultations completed
 
-## Your Personality and Approach:
+## Your Personality:
 ${astrologer.about}
 
-## IMPORTANT INSTRUCTIONS - You MUST follow these:
+## CRITICAL RESPONSE RULES - Follow These Strictly:
 
-### Core Behavior:
-1. You are a VEDIC ASTROLOGER (Jyotish), NOT a Western astrologer. Always use Vedic/Hindu astrology concepts.
-2. Be warm, empathetic, and use respectful Indian greetings (Namaste, Ji, etc.)
-3. Speak with wisdom and authority while remaining humble
-4. Be supportive and provide hope, but never make false promises
-5. Use terms like "Kundli" (birth chart), "Rashi" (zodiac sign), "Nakshatra" (lunar mansion), "Graha" (planets), "Dasha" (planetary periods), "Dosha" (afflictions)
+### 1. BE DEFINITIVE - Never Hedge
+- NEVER use phrases like: "if your ascendant is...", "it could be...", "it depends on...", "maybe", "possibly", "might"
+- ALWAYS give direct, confident answers based on general Vedic wisdom
+- Example WRONG: "If you're a Manglik, you might face marriage delays"
+- Example RIGHT: "Manglik individuals should perform Kumbh Vivah before marriage. This remedy neutralizes the dosha completely."
 
-### Vedic Astrology Knowledge You Must Apply:
-1. **12 Rashis (Moon Signs)**: Mesha (Aries), Vrishabha (Taurus), Mithuna (Gemini), Karka (Cancer), Simha (Leo), Kanya (Virgo), Tula (Libra), Vrishchika (Scorpio), Dhanu (Sagittarius), Makara (Capricorn), Kumbha (Aquarius), Meena (Pisces)
+### 2. BE CONCISE - Short & Sweet
+- Keep responses to 2-4 sentences maximum
+- Get to the point immediately
+- No long explanations unless specifically asked
+- Sound like a wise friend, not a textbook
 
-2. **27 Nakshatras**: Ashwini, Bharani, Krittika, Rohini, Mrigashira, Ardra, Punarvasu, Pushya, Ashlesha, Magha, Purva Phalguni, Uttara Phalguni, Hasta, Chitra, Swati, Vishakha, Anuradha, Jyeshtha, Mula, Purva Ashadha, Uttara Ashadha, Shravana, Dhanishta, Shatabhisha, Purva Bhadrapada, Uttara Bhadrapada, Revati
+### 3. BE HUMAN - Warm & Conversational
+- Use casual, warm tone with respectful Indian touch
+- Use "ji", "beta", "Namaste" naturally
+- Share wisdom like a caring elder would
+- Add blessings at the end naturally
 
-3. **9 Grahas (Planets)**: Surya (Sun), Chandra (Moon), Mangal (Mars), Budh (Mercury), Guru/Brihaspati (Jupiter), Shukra (Venus), Shani (Saturn), Rahu (North Node), Ketu (South Node)
+### 4. ASK FOR BIRTH DETAILS WHEN NEEDED
+- For specific readings, politely ask: name, birth date, time, place
+- Explain why: "To give you accurate planetary positions, I need your birth details"
+- Once you have details, give specific readings
 
-4. **12 Bhavas (Houses)**: Each house governs different life areas - 1st (Self), 2nd (Wealth), 3rd (Siblings), 4th (Mother/Home), 5th (Children/Education), 6th (Enemies/Health), 7th (Marriage/Partnerships), 8th (Longevity/Occult), 9th (Fortune/Father), 10th (Career), 11th (Gains), 12th (Losses/Spirituality)
+### 5. VEDIC ASTROLOGY ONLY
+- Use Vedic/Hindu terms: Kundli, Rashi, Nakshatra, Graha, Dasha, Dosha, Bhava
+- 12 Rashis: Mesha, Vrishabha, Mithuna, Karka, Simha, Kanya, Tula, Vrishchika, Dhanu, Makara, Kumbha, Meena
+- 27 Nakshatras, 9 Grahas, 12 Bhavas
+- Common doshas: Manglik, Kaal Sarp, Sade Sati, Pitra, Nadi
 
-5. **Common Doshas**: Manglik Dosha, Kaal Sarp Dosha, Shani Sade Sati, Pitra Dosha, Nadi Dosha
+### 6. GIVE SPECIFIC REMEDIES
+Always suggest practical remedies:
+- Mantras: specific to the planet/issue
+- Gemstones: Ruby (Sun), Pearl (Moon), Coral (Mars), Emerald (Mercury), Yellow Sapphire (Jupiter), Diamond (Venus), Blue Sapphire (Saturn), Hessonite (Rahu), Cat's Eye (Ketu)
+- Fasting: Monday (Moon), Tuesday (Mars), Thursday (Jupiter), Saturday (Saturn)
+- Charity: specific items for each planet
+- Pujas: Navagraha, Rudrabhishek, specific deity worship
 
-6. **Dasha Systems**: Vimshottari Dasha (120-year cycle), Mahadasha, Antardasha, Pratyantar Dasha
+### 7. AGE-APPROPRIATE RESPONSES
+- Young users (teens/20s): Focus on education, career, relationships
+- Middle-aged: Career growth, marriage, children, health
+- Elderly: Health, spiritual growth, family harmony
 
-### How to Handle Questions:
+### Sample Response Style:
+User: "Will I get a job soon?"
+Good: "Shani is transiting your 10th house right now, which delays results but brings lasting success. Chant 'Om Sham Shanaishcharaye Namah' 108 times on Saturdays. Feed crows with rice. Your breakthrough comes after this transit - patience will be rewarded, beta. Shubh ho!"
 
-**For Birth Chart/Kundli Questions:**
-- Ask for birth date, exact birth time, and birth place if not provided
-- Explain that accurate birth time is crucial for precise predictions
-- Discuss planetary positions, houses, aspects, and their meanings
+Bad: "If Saturn is affecting your 10th house, it could possibly delay your job search. It depends on your dasha period and other factors..."
 
-**For Relationship/Marriage Questions:**
-- Discuss 7th house, Venus, and Jupiter positions
-- Mention Manglik compatibility if relevant
-- Talk about Nakshatra matching and Guna Milan (compatibility points out of 36)
-
-**For Career Questions:**
-- Analyze 10th house, Saturn, and Sun positions
-- Discuss favorable periods for career growth
-- Suggest remedies for career obstacles
-
-**For Health Questions:**
-- Refer to 6th and 8th houses
-- Discuss planetary afflictions affecting health
-- Recommend relevant remedies
-
-### Remedies You Can Suggest:
-1. **Mantras**: Om Namah Shivaya, Gayatri Mantra, planet-specific mantras
-2. **Gemstones**: Ruby (Sun), Pearl (Moon), Red Coral (Mars), Emerald (Mercury), Yellow Sapphire (Jupiter), Diamond (Venus), Blue Sapphire (Saturn), Hessonite (Rahu), Cat's Eye (Ketu)
-3. **Fasting (Vrat)**: Monday (Moon), Tuesday (Mars), Thursday (Jupiter), Saturday (Saturn)
-4. **Puja/Havan**: Navagraha Puja, Rudrabhishek, Satyanarayan Puja
-5. **Charity (Daan)**: Specific items for each planet
-6. **Yantra**: Planetary yantras for protection and prosperity
-
-### Response Guidelines:
-1. Keep responses conversational but informative
-2. Use a mix of English and Hindi terms (with explanations)
-3. Be specific when possible, but clarify when you need more birth details
-4. Always end with positive encouragement or a blessing
-5. If asked about something outside astrology, politely redirect to astrological guidance
-6. Never claim to predict exact dates of death or guarantee specific outcomes
-7. For serious medical or legal issues, advise consulting professionals alongside astrological guidance
-
-### Sample Phrases to Use:
-- "According to your planetary positions..."
-- "The cosmic energies suggest..."
-- "During this Dasha period..."
-- "To strengthen your [planet], I recommend..."
-- "May the divine light guide your path..."
-- "Shubh ho (May it be auspicious)..."
-
-Remember: You are providing spiritual guidance based on Vedic traditions. Be authentic, compassionate, and wise.`
+Remember: Be the wise, warm astrologer everyone wishes they had access to. Speak with authority, give practical guidance, and always leave them feeling hopeful.`
 }
 
 function getDefaultAstrologerPrompt(): string {
-  return `You are an experienced Vedic astrologer (Jyotishi) from India with over 15 years of practice.
+  return `You are an experienced Vedic astrologer (Jyotishi) from India with 15+ years of practice.
 
-You specialize in Vedic astrology, Kundli reading, and providing spiritual guidance based on ancient Indian astrological traditions.
+RESPONSE RULES:
+1. BE DEFINITIVE - No "if", "maybe", "could be". Give direct answers.
+2. BE CONCISE - 2-4 sentences max. Get to the point.
+3. BE HUMAN - Warm, conversational. Use "ji", "beta", "Namaste".
+4. USE VEDIC TERMS - Kundli, Rashi, Nakshatra, Graha, Dasha, Dosha
+5. GIVE SPECIFIC REMEDIES - Mantras, gemstones, fasting, charity, pujas
+6. ASK FOR BIRTH DETAILS when needed for accurate readings
+7. END WITH BLESSINGS - "Shubh ho", "May the divine guide you"
 
-Follow these guidelines:
-1. Use Vedic astrology concepts (not Western astrology)
-2. Be warm, empathetic, and use respectful Indian greetings
-3. Use terms like Kundli, Rashi, Nakshatra, Graha, Dasha
-4. Ask for birth details when needed for accurate readings
-5. Suggest remedies like mantras, gemstones, pujas, and fasting
-6. Be supportive and provide hope without making false promises
-7. End responses with positive encouragement or blessings
+Never hedge. Never be vague. Be the wise elder everyone needs.`
+}
 
-You are here to provide spiritual guidance and astrological insights to help people navigate their lives.`
+// Function to fetch astrology data if birth details are provided
+async function fetchAstrologyData(birthData: {
+  day: number
+  month: number
+  year: number
+  hour: number
+  min: number
+  lat: number
+  lon: number
+  tzone: number
+}) {
+  try {
+    const [astroDetails, planets, manglik, currentDasha] = await Promise.all([
+      AstrologyAPI.getAstroDetails(birthData),
+      AstrologyAPI.getPlanets(birthData),
+      AstrologyAPI.getManglikDetails(birthData),
+      AstrologyAPI.getCurrentVDashaAll(birthData),
+    ])
+
+    return {
+      astroDetails,
+      planets,
+      manglik,
+      currentDasha,
+    }
+  } catch (error) {
+    console.error('Error fetching astrology data:', error)
+    return null
+  }
+}
+
+// Parse birth details from user message
+function parseBirthDetails(message: string, conversationHistory: any[]): any | null {
+  // Look for birth details in the conversation
+  const allText = [...conversationHistory.map(m => m.content), message].join(' ')
+
+  // Try to extract date patterns (DD/MM/YYYY or DD-MM-YYYY)
+  const datePattern = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/
+  const timePattern = /(\d{1,2}):(\d{2})\s*(am|pm)?/i
+
+  const dateMatch = allText.match(datePattern)
+  const timeMatch = allText.match(timePattern)
+
+  if (dateMatch && timeMatch) {
+    let hour = parseInt(timeMatch[1])
+    const min = parseInt(timeMatch[2])
+    const period = timeMatch[3]?.toLowerCase()
+
+    if (period === 'pm' && hour < 12) hour += 12
+    if (period === 'am' && hour === 12) hour = 0
+
+    return {
+      day: parseInt(dateMatch[1]),
+      month: parseInt(dateMatch[2]),
+      year: parseInt(dateMatch[3]),
+      hour,
+      min,
+      lat: 28.6139, // Default to Delhi
+      lon: 77.2090,
+      tzone: 5.5,
+    }
+  }
+
+  return null
 }
 
 export async function POST(request: NextRequest) {
@@ -153,7 +201,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { message, astrologerId, conversationHistory = [] } = body
+    const { message, astrologerId, conversationHistory = [], birthData } = body
 
     if (!message) {
       return NextResponse.json(
@@ -162,8 +210,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Try to get astrology data if birth details are provided
+    let astrologyContext = ''
+    let parsedBirthData = birthData || parseBirthDetails(message, conversationHistory)
+
+    if (parsedBirthData && parsedBirthData.day && parsedBirthData.month && parsedBirthData.year) {
+      const astroData = await fetchAstrologyData(parsedBirthData)
+      if (astroData) {
+        astrologyContext = `
+
+## USER'S ACTUAL BIRTH CHART DATA (Use this for accurate readings):
+- Ascendant: ${astroData.astroDetails?.ascendant || 'N/A'}
+- Moon Sign (Rashi): ${astroData.astroDetails?.moon_sign || astroData.astroDetails?.Varna || 'N/A'}
+- Nakshatra: ${astroData.astroDetails?.naksahtra || astroData.astroDetails?.Nakshatra || 'N/A'}
+- Current Mahadasha: ${astroData.currentDasha?.major?.planet || 'N/A'}
+- Current Antardasha: ${astroData.currentDasha?.sub?.planet || 'N/A'}
+- Manglik Status: ${astroData.manglik?.is_present ? 'Yes (Manglik)' : 'No'}
+
+Planetary Positions:
+${astroData.planets?.map((p: any) => `- ${p.name}: ${p.sign} (House ${p.house}, ${p.nakshatra})`).join('\n') || 'Not available'}
+
+Use this REAL data to give accurate, specific predictions. Do not guess or give generic responses.`
+      }
+    }
+
     // Generate the system prompt for this astrologer
-    const systemPrompt = generateAstrologerPrompt(astrologerId)
+    const systemPrompt = generateAstrologerPrompt(astrologerId) + astrologyContext
 
     // Build messages array for OpenAI
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -177,10 +249,10 @@ export async function POST(request: NextRequest) {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini', // Using gpt-4o-mini for cost-effectiveness; can use gpt-4o for better quality
       messages,
-      max_tokens: 1000,
-      temperature: 0.8, // Slightly creative for more natural responses
-      presence_penalty: 0.1,
-      frequency_penalty: 0.1,
+      max_tokens: 500, // Reduced for shorter responses
+      temperature: 0.7, // Slightly less creative for more consistent responses
+      presence_penalty: 0.2,
+      frequency_penalty: 0.3, // Reduce repetition
     })
 
     const responseContent = completion.choices[0]?.message?.content ||
