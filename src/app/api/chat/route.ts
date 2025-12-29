@@ -121,8 +121,8 @@ RESPONSE RULES:
 Never hedge. Never be vague. Be the wise elder everyone needs.`
 }
 
-// Function to fetch astrology data if birth details are provided
-async function fetchAstrologyData(birthData: {
+// Fetch comprehensive astrology data - called ONCE when birth details are first provided
+async function fetchFullAstrologyData(birthData: {
   day: number
   month: number
   year: number
@@ -133,23 +133,47 @@ async function fetchAstrologyData(birthData: {
   tzone: number
 }) {
   try {
-    const [astroDetails, planets, manglik, currentDasha] = await Promise.all([
-      AstrologyAPI.getAstroDetails(birthData),
-      AstrologyAPI.getPlanets(birthData),
-      AstrologyAPI.getManglikDetails(birthData),
-      AstrologyAPI.getCurrentVDashaAll(birthData),
-    ])
+    // Fetch ALL astrology data sequentially to respect rate limits
+    const astroDetails = await AstrologyAPI.getAstroDetails(birthData)
+    const planets = await AstrologyAPI.getPlanets(birthData)
+    const manglik = await AstrologyAPI.getManglikDetails(birthData)
+    const currentDasha = await AstrologyAPI.getCurrentVDashaAll(birthData)
+    const sadheSati = await AstrologyAPI.getSadheSatiStatus(birthData)
 
     return {
       astroDetails,
       planets,
       manglik,
       currentDasha,
+      sadheSati,
+      fetchedAt: Date.now(),
     }
   } catch (error) {
     console.error('Error fetching astrology data:', error)
     return null
   }
+}
+
+// Format astrology data into context for the AI
+function formatAstrologyContext(astroData: any, birthData: any): string {
+  if (!astroData) return ''
+
+  return `
+
+## USER'S ACTUAL BIRTH CHART DATA (Use this for accurate readings):
+- Birth Place: ${birthData.placeName || 'Unknown'} (Lat: ${birthData.lat?.toFixed(2)}, Lon: ${birthData.lon?.toFixed(2)})
+- Ascendant: ${astroData.astroDetails?.ascendant || 'N/A'}
+- Moon Sign (Rashi): ${astroData.astroDetails?.moon_sign || astroData.astroDetails?.Varna || 'N/A'}
+- Nakshatra: ${astroData.astroDetails?.naksahtra || astroData.astroDetails?.Nakshatra || 'N/A'}
+- Current Mahadasha: ${astroData.currentDasha?.major?.planet || 'N/A'}
+- Current Antardasha: ${astroData.currentDasha?.sub?.planet || 'N/A'}
+- Manglik Status: ${astroData.manglik?.is_present ? 'Yes (Manglik)' : 'No'}
+- Sade Sati: ${astroData.sadheSati?.is_undergoing_sadhesati ? 'Currently Active' : 'Not Active'}
+
+Planetary Positions:
+${astroData.planets?.map((p: any) => `- ${p.name}: ${p.sign} (House ${p.house}, ${p.nakshatra})`).join('\n') || 'Not available'}
+
+Use this REAL data to give accurate, specific predictions. Do not guess or give generic responses.`
 }
 
 // Calculate timezone from longitude (approximate)
@@ -288,7 +312,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { message, astrologerId, conversationHistory = [], birthData } = body
+    const {
+      message,
+      astrologerId,
+      conversationHistory = [],
+      birthData,
+      cachedAstrologyData, // Accept cached astrology data from frontend
+    } = body
 
     if (!message) {
       return NextResponse.json(
@@ -297,33 +327,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Try to get astrology data if birth details are provided
     let astrologyContext = ''
     let parsedBirthData = birthData
+    let astrologyDataToReturn = null
 
     // If no birth data provided, try to parse from conversation
     if (!parsedBirthData || !parsedBirthData.day) {
       parsedBirthData = await parseBirthDetails(message, conversationHistory)
     }
 
+    // Only fetch astrology data if we have birth details
     if (parsedBirthData && parsedBirthData.day && parsedBirthData.month && parsedBirthData.year) {
-      const astroData = await fetchAstrologyData(parsedBirthData)
-      if (astroData) {
-        astrologyContext = `
-
-## USER'S ACTUAL BIRTH CHART DATA (Use this for accurate readings):
-- Birth Place: ${parsedBirthData.placeName || 'Unknown'} (Lat: ${parsedBirthData.lat?.toFixed(2)}, Lon: ${parsedBirthData.lon?.toFixed(2)})
-- Ascendant: ${astroData.astroDetails?.ascendant || 'N/A'}
-- Moon Sign (Rashi): ${astroData.astroDetails?.moon_sign || astroData.astroDetails?.Varna || 'N/A'}
-- Nakshatra: ${astroData.astroDetails?.naksahtra || astroData.astroDetails?.Nakshatra || 'N/A'}
-- Current Mahadasha: ${astroData.currentDasha?.major?.planet || 'N/A'}
-- Current Antardasha: ${astroData.currentDasha?.sub?.planet || 'N/A'}
-- Manglik Status: ${astroData.manglik?.is_present ? 'Yes (Manglik)' : 'No'}
-
-Planetary Positions:
-${astroData.planets?.map((p: any) => `- ${p.name}: ${p.sign} (House ${p.house}, ${p.nakshatra})`).join('\n') || 'Not available'}
-
-Use this REAL data to give accurate, specific predictions. Do not guess or give generic responses.`
+      if (cachedAstrologyData) {
+        // USE CACHED DATA - NO API CALLS!
+        astrologyContext = formatAstrologyContext(cachedAstrologyData, parsedBirthData)
+      } else {
+        // First time with birth details - fetch ALL data at once
+        const astroData = await fetchFullAstrologyData(parsedBirthData)
+        if (astroData) {
+          astrologyContext = formatAstrologyContext(astroData, parsedBirthData)
+          astrologyDataToReturn = astroData // Return to frontend for caching
+        }
       }
     }
 
@@ -351,9 +375,12 @@ Use this REAL data to give accurate, specific predictions. Do not guess or give 
     const responseContent = completion.choices[0]?.message?.content ||
       'I apologize, but I could not generate a response. Please try again.'
 
+    // Return response with astrology data for frontend caching
     return NextResponse.json({
       response: responseContent,
       usage: completion.usage,
+      birthData: parsedBirthData, // Return parsed birth data
+      astrologyData: astrologyDataToReturn, // Return for frontend to cache (null if already cached)
     })
   } catch (error: any) {
     console.error('Chat API error:', error)

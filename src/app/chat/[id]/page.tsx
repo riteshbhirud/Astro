@@ -31,6 +31,10 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Cache astrology data to avoid repeated API calls
+  const [cachedBirthData, setCachedBirthData] = useState<any>(null)
+  const [cachedAstrologyData, setCachedAstrologyData] = useState<any>(null)
+
   const astrologerId = params.id as string
   const astrologer = getAstrologerById(astrologerId)
 
@@ -93,6 +97,8 @@ export default function ChatPage() {
             role: m.role === 'user' ? 'user' : 'assistant',
             content: m.content,
           })),
+          birthData: cachedBirthData, // Send cached birth data
+          cachedAstrologyData: cachedAstrologyData, // Send cached astrology data - NO NEW API CALLS!
         }),
       })
 
@@ -100,6 +106,14 @@ export default function ChatPage() {
 
       if (data.error) {
         throw new Error(data.error)
+      }
+
+      // Cache birth data and astrology data if returned (first time only)
+      if (data.birthData && !cachedBirthData) {
+        setCachedBirthData(data.birthData)
+      }
+      if (data.astrologyData && !cachedAstrologyData) {
+        setCachedAstrologyData(data.astrologyData)
       }
 
       const astrologerMessage: Message = {
